@@ -1,0 +1,235 @@
+🛠️ Step 1: Understand the Basics of Stremio Addons
+Stremio uses a universal addon system based on Node.js and HTTP/REST APIs. The addons are modular services that Stremio can call for:
+
+Catalogs (lists of media)
+
+Meta (info about a media item)
+
+Streams (sources to play from)
+
+Subtitles
+
+Other stuff (like recommendations or search)
+
+Each addon is registered through a manifest.json, which describes what it provides.
+
+💡 What You Want to Build: “ChatGPT Recommended” Addon
+🧠 Your Goals:
+Use your ChatGPT account to generate personalized movie/show suggestions.
+
+Show it in Stremio under a new catalog tab like “ChatGPT Recommended.”
+
+Optionally filter based on mood, genre, past history, etc.
+
+🔧 Step 2: Tools You’ll Need
+Node.js (latest LTS version)
+
+Stremio Addon SDK
+
+Your own ChatGPT API key (from OpenAI)
+
+A server or local Node server to run the addon (can be hosted free with services like Render or Railway)
+
+📦 Step 3: Starter Code
+Here’s a very basic Stremio addon that exposes a dummy catalog, which we’ll later hook into ChatGPT:
+
+bash
+Copy
+Edit
+npm init -y
+npm install stremio-addon-sdk openai
+Then create index.js:
+
+js
+Copy
+Edit
+const { addonBuilder } = require("stremio-addon-sdk");
+const { Configuration, OpenAIApi } = require("openai");
+
+const builder = new addonBuilder({
+    id: "org.chatgpt.recommendations",
+    version: "1.0.0",
+    name: "ChatGPT Recommended",
+    description: "Recommendations based on GPT-generated prompts",
+    catalogs: [
+        {
+            type: "movie",
+            id: "chatgpt-movies",
+            name: "ChatGPT Recommended",
+        }
+    ],
+    resources: ["catalog"],
+    types: ["movie"]
+});
+
+// Your OpenAI key (replace with env var in production)
+const openai = new OpenAIApi(new Configuration({
+    apiKey: "sk-xxxxxxxxxxxxxxxxx"
+}));
+
+builder.defineCatalogHandler(async ({ id, type }) => {
+    if (id !== "chatgpt-movies") return { metas: [] };
+
+    const prompt = `Give me a list of 10 popular but underrated sci-fi movies for a tech-savvy user who likes philosophical themes. Return title and year.`;
+
+    const gptResponse = await openai.createChatCompletion({
+        model: "gpt-4",
+        messages: [{ role: "user", content: prompt }]
+    });
+
+    const results = gptResponse.data.choices[0].message.content;
+
+    // Parse GPT output (you’ll probably want to return actual IMDb IDs)
+    const metas = results.split("\n").filter(Boolean).map((line, i) => {
+        const match = line.match(/(\d+\.)?\s*(.*)\s\((\d{4})\)/);
+        if (!match) return null;
+        return {
+            id: `chatgpt-movie-${i}`,
+            type: "movie",
+            name: match[2],
+            year: match[3],
+            poster: "https://via.placeholder.com/150?text=GPT+Pick",
+            description: "Recommended by ChatGPT"
+        };
+    }).filter(Boolean);
+
+    return { metas };
+});
+
+module.exports = builder.getInterface();
+🌐 Step 4: Run It Locally
+bash
+Copy
+Edit
+node index.js
+Use something like ngrok to expose the local server publicly so Stremio can access it:
+
+bash
+Copy
+Edit
+npx ngrok http 7000
+📄 Step 5: Test It in Stremio
+Go to Stremio → Add-ons → Community Add-ons → Install via URL
+
+Paste your ngrok URL (e.g. https://1234.ngrok.io/manifest.json)
+
+You should now see ChatGPT Recommended under movie catalogs
+
+🔮 Advanced Features to Add Later
+Use user profiles or tokens to personalize (you’d have to proxy GPT using auth keys)
+
+Add filters like genre or mood
+
+Connect to watch history (if you're willing to dig into Stremio DB or cookies)
+
+Serve actual stream links by scraping or using APIs like TMDB/Trakt/Real-Debrid
+
+🧠 Can ChatGPT Give Real Recommendations?
+Absolutely—it can be used to:
+
+Curate genre blends ("give me gothic romance with tech dystopia")
+
+Suggest lesser-known titles based on niche tastes
+
+Even recommend across eras, studios, or regions
+
+You can expand this by making GPT the backend brain of multiple catalog tabs.
+
+
+🚫 Why You Can’t Directly Link ChatGPT Plus to Your Addon
+Here’s the deal:
+
+
+Feature	ChatGPT Plus (chat.openai.com)	OpenAI API
+✅ Chat in browser	Yes	No
+✅ Use GPT-4	Yes	Yes (with cost)
+✅ Use in your own code	❌	✅
+✅ Generate custom content (like catalogs)	❌	✅
+✅ Authentication with API keys	❌	✅
+ChatGPT Plus doesn’t give you an API key, and OpenAI intentionally separates the accounts for security and monetization reasons.
+
+🌀 What Could Work (Risky or Hacky Paths)
+⚠️ Option 1: Browser Automation (Unofficial, Fragile)
+You could technically:
+
+Use Puppeteer or Playwright (Node.js browser automation tools)
+
+Log into your ChatGPT Plus account (you’d have to save cookies/tokens manually)
+
+Script it to send prompts and scrape replies from the UI
+
+Parse that and feed it into Stremio
+
+Risks:
+Very fragile. One UI update and it breaks.
+
+Could get your account banned for ToS violations.
+
+Can’t scale well.
+
+Requires launching a full browser in the background every time a user opens the Stremio tab.
+
+Only do this if you’re experimenting locally for fun and not sharing with others.
+
+🧠 Option 2: Proxy from ChatGPT UI to Backend (Still hacky)
+You run a local app that:
+
+Opens ChatGPT web in a hidden browser
+
+Sends prompts through your logged-in session
+
+Intercepts the responses and converts them into JSON
+
+Feeds that into your addon
+
+This is basically option 1 but with more structure.
+
+✅ Option 3: Free Trial of OpenAI API (~$5 worth of credits)
+You can:
+
+Sign up at https://platform.openai.com
+
+Get $5 of free credits on a new account
+
+Use that to build and test your addon normally with the API
+
+Switch to a paid plan only if needed
+
+GPT-3.5 is free on API. GPT-4 is not, but you could simulate your ChatGPT Plus behavior using 3.5 and save money.
+
+🔄 Option 4: External Recommendation System
+Skip GPT entirely and use an existing source like:
+
+TMDB “trending” API
+
+Trakt.tv recommendations
+
+Reddit “Top this week” scraped from /r/moviesuggestions
+
+Then later add GPT for text-based personalization once the system’s up.
+
+💡 How the Results Would Link in Stremio
+No matter how you generate the list of titles, you'd still need to:
+
+Turn them into Stremio-compatible meta objects (with id, type, name, poster, etc.)
+
+Link to real stream sources (optional) — from:
+
+Torrentio + RealDebrid
+
+External APIs (like YouTube for trailers or TMDB for metadata)
+
+Present them in your custom tab like “ChatGPT Recommended”
+
+Stremio uses those titles' ids to search its internal plugin ecosystem for streams. You don’t have to provide the full stream unless you want to.
+
+Want Me to Help Set One Up Locally?
+If you’re down, I can:
+
+Set up a local version using GPT-3.5 API (free credits)
+
+Walk you through replacing GPT with static or randomized data
+
+Help you switch later to an automated “scrape-GPT-chat” if you’re feeling chaotic 😅
+
+Let me know how far you want to take this—safe dev route or risky hack route?
